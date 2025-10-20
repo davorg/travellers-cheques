@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=UA-56332-73"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-YJCYWQFHGB');
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Travellers Cheque Calculator</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 2rem auto;
+      max-width: 700px;
+      padding: 1rem;
+      color: #222;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    label {
+      display: block;
+      margin-top: 1rem;
+      font-weight: 600;
+    }
+    input, select {
+      padding: 0.5rem;
+      font-size: 1rem;
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 0.25rem;
+    }
+    button {
+      margin-top: 1rem;
+      width: 100%;
+      padding: 0.75rem;
+      background: #005eb8;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #004a90;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+      color: #fff;
+    }
+    .interbank { background: #008060; }
+    .highstreet { background: #e0a800; }
+    .travelex { background: #d93025; }
+    .value {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin-top: 0.5rem;
+    }
+    .note {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: #555;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Travellers Cheque Value Estimator</h1>
+  <p>Enter the currency and total amount of your old travellers cheques to see how much you might actually receive today.</p>
+
+  <label for="currency">Currency</label>
+  <select id="currency">
+    <option value="USD">US Dollar (USD)</option>
+    <option value="EUR">Euro (EUR)</option>
+    <option value="AUD">Australian Dollar (AUD)</option>
+    <option value="CAD">Canadian Dollar (CAD)</option>
+    <option value="JPY">Japanese Yen (JPY)</option>
+  </select>
+
+  <label for="amount">Amount</label>
+  <input type="number" id="amount" value="350" />
+
+  <button id="calculate">Calculate</button>
+
+  <div class="grid" id="results"></div>
+  <p class="note"><strong>Apples-to-apples:</strong> All three columns include a <strong>7% encashment fee</strong> (as charged by Travelex) so you can compare the effect of different exchange rates fairly. Interbank = mid‑market rate; High Street ≈ 10% worse than interbank; Travelex ≈ 20% worse than interbank.</p>
+
+  <script>
+  async function fetchRate(base, target = 'GBP') {
+    // Primary: exchangerate.host (no key, good CORS)
+    try {
+      const res = await fetch(
+        `https://api.exchangerate.host/latest?base=${encodeURIComponent(base)}&symbols=${encodeURIComponent(target)}`
+      );
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const r = data && data.rates && data.rates[target];
+      if (typeof r === 'number') return r;
+      throw new Error('Unexpected response');
+    } catch (_) {
+      // Fallback: Frankfurter (ECB rates)
+      const res2 = await fetch(
+        `https://api.frankfurter.app/latest?from=${encodeURIComponent(base)}&to=${encodeURIComponent(target)}`
+      );
+      if (!res2.ok) throw new Error('HTTP ' + res2.status);
+      const data2 = await res2.json();
+      const r2 = data2 && data2.rates && data2.rates[target];
+      if (typeof r2 === 'number') return r2;
+      throw new Error('Could not fetch exchange rate. Please try again.');
+    }
+  }
+
+  function formatGBP(n) {
+    return n.toLocaleString('en-GB', { style: 'currency', currency: 'GBP' });
+  }
+
+  function formatRate(n) {
+    return Number(n).toFixed(4);
+  }
+
+  async function calculate() {
+    const currency = document.getElementById('currency').value;
+    const amountRaw = document.getElementById('amount').value;
+    const amount = Number(amountRaw);
+
+    const results = document.getElementById('results');
+    if (!Number.isFinite(amount) || amount <= 0) {
+      results.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#d93025;">Enter a valid amount</div>';
+      return;
+    }
+
+    results.innerHTML = '<div style="grid-column:1/-1;text-align:center;">Fetching rates…</div>';
+
+    try {
+      const rate = await fetchRate(currency);
+      const netAmount = amount * 0.93; // apply the same 7% encashment fee to ALL columns for fair comparison
+
+      // Rates used
+      const interbankRate = rate;              // mid-market
+      const highStreetRate = rate * 0.90;      // ~10% worse than mid-market
+      const travelexRate  = rate * 0.80;       // ~20% worse than mid-market
+
+      // GBP outcomes (all AFTER 7% fee)
+      const midGbp = netAmount * interbankRate;
+      const highGbp = netAmount * highStreetRate;
+      const travelexGbp = netAmount * travelexRate;
+
+      results.innerHTML = `
+        <div class=\"card interbank\">
+          <h3>Interbank Rate</h3>
+          <p>Rate used: ${formatRate(interbankRate)} GBP per ${currency}<br><em>Includes 7% fee</em></p>
+          <div class=\"value\">${formatGBP(midGbp)}</div>
+        </div>
+        <div class=\"card highstreet\">
+          <h3>High Street Rate</h3>
+          <p>Rate used: ${formatRate(highStreetRate)} GBP per ${currency}<br><em>Includes 7% fee</em></p>
+          <div class=\"value\">${formatGBP(highGbp)}</div>
+        </div>
+        <div class=\"card travelex\">
+          <h3>Travelex Encashment</h3>
+          <p>Rate used: ${formatRate(travelexRate)} GBP per ${currency}<br><em>Includes 7% fee</em></p>
+          <div class=\"value\">${formatGBP(travelexGbp)}</div>
+        </div>`;
+    } catch (err) {
+      results.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#d93025;">${err.message}</div>`;
+    }
+  }
+
+  document.getElementById('calculate').addEventListener('click', calculate);
+</script>
+</body>
+</html>
+
